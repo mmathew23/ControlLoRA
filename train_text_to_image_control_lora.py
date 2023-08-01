@@ -549,6 +549,7 @@ def main():
         dataset_cls = dataset_cls.from_name(args.dataset_name)
         dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='small')
         val_dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='validation')
+        sample_dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='sample')
         print(len(dataset), len(val_dataset))
     elif args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
@@ -664,9 +665,17 @@ def main():
         shuffle=False,
         collate_fn=collate_fn,
         batch_size=1,
-        num_workers=0,
+        num_workers=2,
+    )
+    sample_dataloader = torch.utils.data.DataLoader(
+        sample_dataset,
+        shuffle=False,
+        collate_fn=collate_fn,
+        batch_size=1,
+        num_workers=2,
     )
     val_iter = iter(val_dataloader)
+    sample_iter = iter(sample_dataloader)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -835,10 +844,10 @@ def main():
                             for _ in range(args.num_validation_images):
                                 with torch.no_grad():
                                     try:
-                                        batch = next(val_iter)
+                                        batch = next(sample_iter)
                                     except:
-                                        val_iter = iter(val_dataloader)
-                                        batch = next(val_iter)
+                                        sample_iter = iter(sample_dataloader)
+                                        batch = next(sample_iter)
                                     target = batch["pixel_values"].to(dtype=weight_dtype)
                                     guide = batch["guide_values"].to(accelerator.device)
                                     _ = control_lora(guide).control_states

@@ -24,11 +24,14 @@ def gaussian_kernel(size: int, sigma: float):
     return gauss[:, None] * gauss[None, :]
 
 
-def convolve_gaussian(img, size, sigma=1):
+def convolve_gaussian(img, size, sigma=1, padding=0, stride=1):
     if isinstance(img, Image.Image):
         img = TF.to_tensor(img)[None]
     weights = gaussian_kernel(size, sigma).to(img.device)
-    return torch.nn.functional.conv2d(img, weights[None, None, :, :], padding=0, stride=size)
+    if stride == 0:
+        stride = size
+        assert img.shape[1] % size == 0 and img.shape[2] % size == 0
+    return torch.nn.functional.conv2d(img, weights[None, None, :, :], padding=padding, stride=stride)
 
 # function to quantize an image
 
@@ -46,8 +49,8 @@ def quantize(img: Image.Image, res: int = 512, module_size: int = 10, border: in
     img = TF.to_tensor(img)
 
     # check if image is divisible by module_size
-    if img.shape[1] % module_size != 0 or img.shape[2] % module_size != 0:
-        raise ValueError("Image dimensions must be divisible by module_size")
+    # if img.shape[1] % module_size != 0 or img.shape[2] % module_size != 0:
+    #     raise ValueError("Image dimensions must be divisible by module_size")
     
     # # create gaussian kernel according to module_size
     # gaussian_img = convolve_gaussian(img[None], module_size, sigma=1.5)
@@ -85,18 +88,24 @@ def quantize(img: Image.Image, res: int = 512, module_size: int = 10, border: in
 
     # return img[0]
 
-    # find the 25th percentile of the image and set it to lower threshold
-    lower_threshold = torch.quantile(img, 0.25)
+    # # find the 25th percentile of the image and set it to lower threshold
+    # lower_threshold = torch.quantile(img, 0.25)
 
-    # find the 75th percentile of the image and set it to upper threshold
-    upper_threshold = torch.quantile(img, 0.75)
+    # # find the 75th percentile of the image and set it to upper threshold
+    # upper_threshold = torch.quantile(img, 0.75)
 
-    gray_img = torch.ones_like(img) * 0.5
-    # set lower threshold to 0
-    gray_img[img <= lower_threshold] = 0
-    # set upper threshold to 1
-    gray_img[img >= upper_threshold] = 1
-    return gray_img
+    # gray_img = torch.ones_like(img) * 0.5
+    # # set lower threshold to 0
+    # gray_img[img <= lower_threshold] = 0
+    # # set upper threshold to 1
+    # gray_img[img >= upper_threshold] = 1
+    # return gray_img
+
+    gaussian_img = convolve_gaussian(img, module_size, sigma=3.5, padding=module_size//2, stride=1)
+    contrast = kwargs.get('contrast', 5.0)
+    gaussian_img = TF.adjust_contrast(gaussian_img, contrast)
+    return gaussian_img[0]
+
 
 class Dataset(base.Dataset):
     def __init__(self, tokenizer, resolution=512, use_crop=True, **kwargs):
@@ -126,15 +135,17 @@ class Dataset(base.Dataset):
         w, h = img.size
         
         if self.dataset_type == 'validation':
-            module_size = 1
+            module_size = 11
             border = 0
-            guide = 2*quantize(img, res=self.size, module_size=module_size, border=border, offset=0)-1.0
+            guide = 2*quantize(img, res=self.size, module_size=module_size, border=border, offset=0, contrast=1.0)-1.0
         else:
             # border is random int between 3 and 8
-            border = random.randint(3, 6)
+            # border = random.randint(3, 6)
+            border = 0
         
             # module size is random choice of (4, 8, 16)
-            module_size = random.choice([1, 2, 4, 8, 16])
+            # module_size = random.choice([1, 2, 4, 8, 16])
+            module_size = random.choice([5, 9, 13, 17])
             guide = 2*quantize(img, res=self.size, module_size=module_size, border=border)-1.0
         # guide is 1, h, w tensor and expand to 3, h, w
         guide = guide.expand(3, h, w) 

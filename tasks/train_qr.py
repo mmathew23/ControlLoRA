@@ -2,7 +2,7 @@ import os
 
 os.chdir(os.path.join(os.path.dirname(__file__), '..'))
 
-validation_prompt = ("tokyo, 8 k, unreal engine")
+validation_prompt = ("market interior, colorful, 3 d scene, greg rutkowski, zabrocki, jayison devadas, trending on artstation, 8 k")
 
 cmd = rf'''CUDA_VISIBLE_DEVICES="1" accelerate launch --num_processes=1 --mixed_precision="fp16" train_text_to_image_control_lora.py \
   --pretrained_model_name_or_path="runwayml/stable-diffusion-v1-5" \
