@@ -349,7 +349,7 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
     )
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -546,7 +546,7 @@ def main():
         # Use custom dataset define in process
         use_custom_dataset = True
         dataset_cls = dataset_cls.from_name(args.dataset_name)
-        dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True)
+        dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='validation')
     elif args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
@@ -651,7 +651,7 @@ def main():
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
-        shuffle=True,
+        # shuffle=True,
         collate_fn=collate_fn,
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,

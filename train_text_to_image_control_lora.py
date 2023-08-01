@@ -350,7 +350,7 @@ def main():
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
-        logging_dir=logging_dir,
+        project_dir=logging_dir,
     )
     if args.report_to == "wandb":
         if not is_wandb_available():
@@ -547,7 +547,9 @@ def main():
         # Use custom dataset define in process
         use_custom_dataset = True
         dataset_cls = dataset_cls.from_name(args.dataset_name)
-        dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True)
+        dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='small')
+        val_dataset = dataset_cls(tokenize_captions, resolution=args.resolution, use_crop=True, dataset_type='validation')
+        print(len(dataset), len(val_dataset))
     elif args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
@@ -656,8 +658,9 @@ def main():
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
+    print(len(val_dataset))
     val_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
+        val_dataset,
         shuffle=False,
         collate_fn=collate_fn,
         batch_size=1,
@@ -802,7 +805,7 @@ def main():
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if global_step % args.checkpointing_steps == 0:
+                if global_step % args.checkpointing_steps == 0 or global_step == 1:
                     if accelerator.is_main_process:
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
@@ -828,6 +831,7 @@ def main():
                             # run inference
                             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
                             images = []
+                            prompts = []
                             for _ in range(args.num_validation_images):
                                 with torch.no_grad():
                                     try:
@@ -839,9 +843,11 @@ def main():
                                     guide = batch["guide_values"].to(accelerator.device)
                                     _ = control_lora(guide).control_states
                                     image = pipeline(
-                                        args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                                        # args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                                        batch['text'], num_inference_steps=30, generator=generator).images[0]
                                     image = dataset_cls.cat_input(image, target, guide)
                                 images.append(image)
+                                prompts.append(batch["text"][0])
 
                             for tracker in accelerator.trackers:
                                 if tracker.name == "tensorboard":
@@ -851,7 +857,7 @@ def main():
                                     tracker.log(
                                         {
                                             "sampling": [
-                                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                                                wandb.Image(image, caption=f"{i}: {prompts[i]}")
                                                 for i, image in enumerate(images)
                                             ]
                                         }
@@ -867,6 +873,8 @@ def main():
                 break
         
         if accelerator.is_main_process:
+            print(f'in validation {args.validation_prompt}, {epoch}, {args.validation_epochs}')
+            print(f'{args.validation_prompt is not None and epoch % args.validation_epochs==0}')
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 logger.info(
                     f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
